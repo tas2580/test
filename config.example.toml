@@ -1,0 +1,15 @@
+docs_path = "./data/docs"
+ollama_base_url = "http://localhost:11434"
+chat_model = "gemma3"
+embedding_model = "gemma3"
+embedding_fallback_model = "nomic-embed-text"
+chroma_persist_dir = "./data/chroma"
+sqlite_path = "./data/docbot.db"
+top_k = 8
+max_context_chunks = 5
+txt_max_chars = 2000
+csv_group_size = 50
+answer_mode = "short"
+log_level = "INFO"
+log_dir = "./logs"
+chat_log_path = "./logs/chat.jsonl"
