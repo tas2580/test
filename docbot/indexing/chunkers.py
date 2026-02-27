@@ -83,36 +83,21 @@ def chunk_txt_file(file_path: Path, max_chars: int = 2000) -> Generator[Chunk, N
 
 
 def chunk_csv_file(file_path: Path, group_size: int = 50) -> Iterable[Chunk]:
-    # utf-8-sig erlaubt CSVs mit BOM, die sonst im Header Probleme verursachen können.
-    with file_path.open("r", encoding="utf-8-sig", newline="") as handle:
+    with file_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.reader(handle, delimiter=";")
         try:
             header = next(reader)
         except StopIteration:
             return
 
-        # Leere Header-Zeile behandeln (z. B. wenn die Datei mit Leerzeilen startet).
-        if not any(cell.strip() for cell in header):
-            for candidate in reader:
-                if any(cell.strip() for cell in candidate):
-                    header = candidate
-                    break
-            else:
-                return
-
         row_group: list[list[str]] = []
         start_line = 2
         line_num = 1
         group_index = 0
-        data_rows_seen = 0
 
         for row in reader:
             line_num += 1
-            if not any(cell.strip() for cell in row):
-                continue
-
             row_group.append(row)
-            data_rows_seen += 1
             if len(row_group) == group_size:
                 end_line = line_num
                 yield _build_csv_chunk(file_path, header, row_group, start_line, end_line, group_index)
@@ -123,9 +108,6 @@ def chunk_csv_file(file_path: Path, group_size: int = 50) -> Iterable[Chunk]:
         if row_group:
             end_line = line_num
             yield _build_csv_chunk(file_path, header, row_group, start_line, end_line, group_index)
-        elif data_rows_seen == 0:
-            # Header-only CSV nicht ignorieren: als Schema-Chunk indexieren.
-            yield _build_csv_chunk(file_path, header, [["<keine datenzeilen>"]], 2, 2, group_index)
 
 
 def _build_csv_chunk(

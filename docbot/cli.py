@@ -40,13 +40,6 @@ def setup_logging(log_dir: str, level: str) -> None:
     root.addHandler(console_handler)
     root.addHandler(json_handler)
 
-    # HTTP-Ausgaben im CLI vollständig unterdrücken.
-    for logger_name in ("httpx", "httpcore"):
-        logger = logging.getLogger(logger_name)
-        logger.handlers.clear()
-        logger.propagate = False
-        logger.disabled = True
-
 
 def _services(config_path: Optional[str] = None, **overrides):
     settings = load_settings(config_path, **overrides)

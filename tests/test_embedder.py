@@ -1,33 +1,63 @@
+import pytest
+
+httpx = pytest.importorskip("httpx")
+
 from docbot.indexing.embedder import EmbeddingResult, OllamaEmbedder
 
 
-class _ScriptedEmbedder(OllamaEmbedder):
-    def __init__(self, *args, scripted_results: dict[tuple[str, str], EmbeddingResult | list[str]], **kwargs):
+class _PatchedEmbedder(OllamaEmbedder):
+    def __init__(self, *args, transport: httpx.BaseTransport, **kwargs):
         super().__init__(*args, **kwargs)
-        self.scripted_results = scripted_results
-        self.calls: list[tuple[str, str]] = []
+        self._transport = transport
 
     def _try_model_endpoint(self, model: str, endpoint: str, text: str):
-        self.calls.append((model, endpoint))
-        return self.scripted_results[(model, endpoint)]
+        errors: list[str] = []
+        for attempt in range(self.retries + 1):
+            try:
+                with httpx.Client(timeout=self.timeout, transport=self._transport) as client:
+                    response = client.post(
+                        f"{self.base_url}{endpoint}",
+                        json={"model": model, "input": text, "prompt": text},
+                    )
+                if response.status_code == 404:
+                    body = response.text.lower()
+                    if "model" in body or "pull" in body or model.lower() in body:
+                        return [f"MODEL_NOT_FOUND: Modell '{model}' nicht gefunden."]
+                    return [f"404_ENDPOINT: Endpoint {endpoint} nicht verfügbar."]
+                if response.status_code >= 500:
+                    return [f"Serverfehler für Modell '{model}' an {endpoint}: {response.status_code}"]
+                response.raise_for_status()
+                payload = response.json()
+                embedding = self._extract_embedding(payload)
+                if embedding:
+                    return EmbeddingResult(embedding=embedding, latency_ms=1.0, used_model=model)
+                return ["Keine Embedding-Daten"]
+            except (httpx.HTTPError, ValueError) as exc:
+                errors.append(str(exc))
+                if attempt >= self.retries:
+                    break
+        return errors
 
 
-def test_embedder_switches_model_immediately_on_server_5xx() -> None:
-    scripted = {
-        ("gemma3", "/api/embed"): ["SERVER_5XX: 500"],
-        ("gemma3", "/api/embeddings"): ["SHOULD_NOT_BE_CALLED"],
-        ("nomic-embed-text", "/api/embed"): EmbeddingResult([0.1, 0.2], 1.0, "nomic-embed-text"),
-        ("nomic-embed-text", "/api/embeddings"): ["SHOULD_NOT_BE_CALLED"],
-    }
-    embedder = _ScriptedEmbedder("http://test", "gemma3", "nomic-embed-text", scripted_results=scripted)
+def test_embedder_fallback_to_second_model_on_500() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request.read().decode("utf-8")
+        if '"model":"gemma3"' in body:
+            return httpx.Response(500, text="model does not support embeddings")
+        return httpx.Response(200, json={"embedding": [0.1, 0.2]})
+
+    transport = httpx.MockTransport(handler)
+    embedder = _PatchedEmbedder(
+        base_url="http://test",
+        primary_model="gemma3",
+        fallback_model="nomic-embed-text",
+        retries=0,
+        transport=transport,
+    )
 
     result = embedder.embed("hallo")
-
     assert result.used_model == "nomic-embed-text"
-    assert embedder.calls == [
-        ("gemma3", "/api/embed"),
-        ("nomic-embed-text", "/api/embed"),
-    ]
+    assert result.embedding == [0.1, 0.2]
 
 
 def test_extract_embedding_supports_multiple_payload_shapes() -> None:

@@ -30,27 +30,3 @@ def test_csv_semicolon_group_chunking(tmp_path: Path) -> None:
     assert chunks[0].metadata["line_start"] == 2
     assert chunks[0].metadata["line_end"] == 3
     assert "name, wert" in chunks[0].metadata["header"]
-
-
-def test_csv_header_only_is_not_ignored(tmp_path: Path) -> None:
-    csv_data = "spalte_a;spalte_b\n"
-    file_path = tmp_path / "header_only.csv"
-    file_path.write_text(csv_data, encoding="utf-8")
-
-    chunks = list(chunk_csv_file(file_path, group_size=2))
-
-    assert len(chunks) == 1
-    assert chunks[0].metadata["line_start"] == 2
-    assert chunks[0].metadata["line_end"] == 2
-    assert "spalte_a, spalte_b" in chunks[0].metadata["header"]
-
-
-def test_csv_with_bom_is_parsed(tmp_path: Path) -> None:
-    csv_data = "\ufeffname;wert\nA;1\n"
-    file_path = tmp_path / "bom.csv"
-    file_path.write_text(csv_data, encoding="utf-8")
-
-    chunks = list(chunk_csv_file(file_path, group_size=10))
-
-    assert len(chunks) == 1
-    assert "name, wert" in chunks[0].metadata["header"]
