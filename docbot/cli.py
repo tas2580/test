@@ -40,10 +40,6 @@ def setup_logging(log_dir: str, level: str) -> None:
     root.addHandler(console_handler)
     root.addHandler(json_handler)
 
-    # HTTP-Request-Noise reduzieren; relevante Fehler werden weiterhin explizit geloggt.
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-
 
 def _services(config_path: Optional[str] = None, **overrides):
     settings = load_settings(config_path, **overrides)
